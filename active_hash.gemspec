@@ -33,11 +33,18 @@ Gem::Specification.new do |s|
   s.email = %q{jeff@zilkey.com}
   s.summary = %q{An ActiveRecord-like model that uses a hash or file as a datasource}
   s.description = %q{Includes the ability to specify data using hashes, yml files or JSON files}
-  s.homepage = %q{http://github.com/zilkey/active_hash}
+  s.homepage = %q{http://github.com/active-hash/active_hash}
   s.license = "MIT"
 
+  s.metadata = {
+    "homepage_uri" => s.homepage,
+    "changelog_uri" => "https://github.com/active-hash/active_hash/blob/master/CHANGELOG.md",
+    "source_code_uri" => s.homepage,
+    "bug_tracker_uri" => "https://github.com/active-hash/active_hash/issues",
+  }
+
   s.files = [
-    "CHANGELOG",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "active_hash.gemspec",

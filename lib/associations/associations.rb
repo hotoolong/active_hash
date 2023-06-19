@@ -4,16 +4,16 @@ module ActiveHash
     module ActiveRecordExtensions
 
       def belongs_to(name, scope = nil, **options)
-        options = {:class_name => name.to_s.camelize }.merge(options)
+        klass_name = options.key?(:class_name) ? options[:class_name] : name.to_s.camelize
         klass =
           begin
-            options[:class_name].constantize
-          rescue
-            nil
-          rescue LoadError
+            klass_name.constantize
+          rescue StandardError, LoadError
             nil
           end
+
         if klass && klass < ActiveHash::Base
+          options = { class_name: klass_name }.merge(options)
           belongs_to_active_hash(name, options)
         else
           super
@@ -49,13 +49,20 @@ module ActiveHash
         end
 
         if ActiveRecord::Reflection.respond_to?(:create)
-          reflection = ActiveRecord::Reflection.create(
-            :belongs_to,
-            association_id.to_sym,
-            nil,
-            options,
-            self
-          )
+          if defined?(ActiveHash::Reflection::BelongsToReflection)
+            reflection = ActiveHash::Reflection::BelongsToReflection.new(association_id.to_sym, nil, options, self)
+            if options[:through]
+              reflection = ActiveRecord::ThroughReflection.new(reflection)
+            end
+          else
+            reflection = ActiveRecord::Reflection.create(
+              :belongs_to,
+              association_id.to_sym,
+              nil,
+              options,
+              self
+            )
+          end
 
           ActiveRecord::Reflection.add_reflection(
             self,
@@ -85,12 +92,12 @@ module ActiveHash
     end
 
     def self.included(base)
+      require_relative "reflection_extensions"
       base.extend Methods
     end
 
     module Methods
       def has_many(association_id, options = {})
-
         define_method(association_id) do
           options = {
             :class_name => association_id.to_s.classify,
@@ -110,13 +117,17 @@ module ActiveHash
             klass.where(foreign_key => primary_key_value)
           end
         end
+        define_method("#{association_id.to_s.underscore.singularize}_ids") do
+          public_send(association_id).map(&:id)
+        end
       end
 
       def has_one(association_id, options = {})
         define_method(association_id) do
           options = {
             :class_name => association_id.to_s.classify,
-            :foreign_key => self.class.to_s.foreign_key
+            :foreign_key => self.class.to_s.foreign_key,
+            :primary_key => self.class.primary_key
           }.merge(options)
 
           scope = options[:class_name].constantize
@@ -124,7 +135,7 @@ module ActiveHash
           if scope.respond_to?(:scoped) && options[:conditions]
             scope = scope.scoped(:conditions => options[:conditions])
           end
-          scope.send("find_by_#{options[:foreign_key]}", id)
+          scope.send("find_by_#{options[:foreign_key]}", send(options[:primary_key]))
         end
       end
 

@@ -20,17 +20,36 @@ describe ActiveYaml::Base do
     Object.send :remove_const, :ArrayRow
     Object.send :remove_const, :City
     Object.send :remove_const, :State
+    Object.send :remove_const, :User
     Object.send :remove_const, :Empty
   end
 
   describe ".load_path" do
-    it 'can execute embedded ruby' do
-       expect(User.first.email).to match(/^user[0-9]*@email.com$/)
-       expect(User.first.password).to eq('secret')
+    context 'default' do
+      it 'can execute embedded ruby' do
+        expect(User.first.email).to match /^user[0-9]*@email.com$/
+        expect(User.first.password).to eq 'secret'
+      end
+    end
+
+    context 'erb disabled' do
+      before { ActiveYaml::Base.process_erb = false }
+      after  { ActiveYaml::Base.process_erb = true }
+
+      it 'can execute embedded ruby' do
+        expect(User.first.email).to eq '<%= "user#{rand(100)}@email.com" %>'
+        expect(User.first.password).to eq "<%= ENV['USER_PASSWORD'] %>"
+      end
     end
 
     it 'can load empty yaml' do
       expect(Empty.first).to be_nil
+    end
+
+    it 'is thread-safe' do
+      (1..5).map do
+        Thread.new { expect(City.count).to eq(3) }
+      end.each(&:join)
     end
   end
 
@@ -94,9 +113,21 @@ describe ActiveYaml::Base do
     describe "with hash data" do
       it "returns an array of hashes" do
         expect(City.load_file).to be_kind_of(Array)
-        expect(City.load_file).to include({"state" => :new_york, "name" => "Albany", "id" => 1})
+        expect(City.load_file).to include({"state" => :new_york, "name" => "Albany", "id" => 1, "key" => "albany"})
         City.reload
         expect(City.all).to include(City.new(:id => 1))
+      end
+
+      it "automatically adds the key attribute" do
+        expect(City.load_file.first.keys).to include("key")
+      end
+
+      it "doesn't overwrite the key attribute when specifically listed in the yml file" do
+        expect(City.load_file.last["key"]).to eql("livable")
+      end
+
+      it "uses the root key of the hash if no key attribute is specified" do
+        expect(City.load_file.first["key"]).to eql("albany")
       end
     end
 
@@ -112,6 +143,10 @@ describe ActiveYaml::Base do
 
     it 'returns a single city based on #find' do
       expect(City.find(1).name).to eq('Albany')
+    end
+
+    it 'returns a single city based on #find with a block' do
+      expect(City.find { |c| c.id == 1 }.name).to eq('Albany')
     end
 
     it 'returns a single city based on find_by_id' do

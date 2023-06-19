@@ -75,6 +75,11 @@ unless SKIP_ACTIVE_RECORD
             expect(author.books).to eq([@book_1, @book_2])
           end
 
+          it "should find the correct record ids" do
+            author = Author.create :id => 1
+            expect(author.book_ids).to eq([@book_1.id, @book_2.id])
+          end
+
           it "return a scope so that we can apply further scopes" do
             author = Author.create :id => 1
             expect(author.books.published).to eq([@book_1])
@@ -93,6 +98,11 @@ unless SKIP_ACTIVE_RECORD
           it "should find the correct records" do
             author = Author.create :id => 1, :book_identifier => 2
             expect(author.books).to eq([@book_2, @book_3])
+          end
+
+          it "should find the correct record ids" do
+            author = Author.create :id => 1, :book_identifier => 2
+            expect(author.book_ids).to eq([@book_2.id, @book_3.id])
           end
 
           it "return a scope so that we can apply further scopes" do
@@ -114,6 +124,11 @@ unless SKIP_ACTIVE_RECORD
             expect(author.books).to eq([@book_1, @book_2])
           end
 
+          it "should find the correct record ids" do
+            author = Author.create :id => 1
+            expect(author.book_ids).to eq([@book_1.id, @book_2.id])
+          end
+
           it "return a scope so that we can apply further scopes" do
             author = Author.create :id => 1
             expect(author.books.published).to eq([@book_1])
@@ -123,7 +138,7 @@ unless SKIP_ACTIVE_RECORD
         it "only uses 1 query" do
           Author.has_many :books
           author = Author.create :id => 1
-          expect(Book).to receive(:find_by_sql)
+          expect(Book).to receive(:where).with(author_id: 1).once.and_call_original
           author.books.to_a
         end
       end
@@ -131,21 +146,31 @@ unless SKIP_ACTIVE_RECORD
     end
 
     describe ActiveHash::Associations::ActiveRecordExtensions do
-
       describe "#belongs_to" do
+        it "doesn't interfere with AR's procs in belongs_to methods" do
+          School.belongs_to :country, lambda { where(name: 'Japan') }
+          school = School.new
+          country = Country.create!(id: 1, name: 'Japan')
+          school.country = country
+          expect(school.country).to eq(country)
+          expect(school.country_id).to eq(country.id)
+          expect(school.country).to eq(country)
+          school.save!
+          school.reload
+          expect(school.country_id).to eq(country.id)
+          expect(school.country).to eq(country)
 
-        if ActiveRecord::VERSION::MAJOR > 3
-          it "doesn't interfere with AR's procs in belongs_to methods" do
-            School.belongs_to :country, lambda { where() }
-            school = School.new
-            country = Country.create!
-            school.country = country
-            expect(school.country).to eq(country)
-            expect(school.country_id).to eq(country.id)
-            school.save!
-            school.reload
-            expect(school.reload.country_id).to eq(country.id)
-          end
+          country.update!(name: 'JAPAN')
+          school.reload
+          expect(school.country_id).to eq(country.id)
+          expect(school.country).to eq(nil)
+        end
+
+        it "doesn't interfere with AR's belongs_to arguments" do
+          allow(ActiveRecord::Base).to receive(:belongs_to).with(:country, nil)
+          allow(ActiveRecord::Base).to receive(:belongs_to).with(:country, nil, {})
+
+          School.belongs_to :country
         end
 
         it "doesn't interfere w/ ActiveRecord's polymorphism" do

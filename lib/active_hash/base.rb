@@ -21,50 +21,7 @@ module ActiveHash
   end
 
   class Base
-
-    class_attribute :_data, :dirty, :default_attributes
-
-    class WhereChain
-      def initialize(scope)
-        @scope = scope
-        @records = @scope.all
-      end
-
-      def not(options)
-        return @scope if options.blank?
-
-        # use index if searching by id
-        if options.key?(:id) || options.key?("id")
-          ids = @scope.pluck(:id) - Array.wrap(options.delete(:id) || options.delete("id"))
-          candidates = ids.map { |id| @scope.find_by_id(id) }.compact
-        end
-        return candidates if options.blank?
-
-        filtered_records = (candidates || @records || []).reject do |record|
-          match_options?(record, options)
-        end
-
-        ActiveHash::Relation.new(@scope.klass, filtered_records, {})
-      end
-
-      def match_options?(record, options)
-        options.all? do |col, match|
-          if match.kind_of?(Array)
-            match.any? { |v| normalize(v) == normalize(record[col]) }
-          else
-            normalize(record[col]) == normalize(match)
-          end
-        end
-      end
-
-      private :match_options?
-
-      def normalize(v)
-        v.respond_to?(:to_sym) ? v.to_sym : v
-      end
-
-      private :normalize
-    end
+    class_attribute :_data, :dirty, :default_attributes, :scopes
 
     if Object.const_defined?(:ActiveModel)
       extend ActiveModel::Naming
@@ -128,9 +85,17 @@ module ActiveHash
         end
       end
 
-      def exists?(record)
-        if record.id.present?
-          record_index[record.id.to_s].present?
+      def exists?(args = nil)
+        if args.respond_to?(:id)
+          record_index[args.id.to_s].present?
+        elsif args == false
+          false
+        elsif args.nil?
+          all.present?
+        elsif args.is_a?(Hash)
+          all.where(args).present?
+        else
+          all.where(id: args.to_i).present?
         end
       end
 
@@ -145,13 +110,18 @@ module ActiveHash
       end
 
       def next_id
-        max_record = all.max { |a, b| a.id <=> b.id }
+        max_record = all_in_process.max { |a, b| a.id <=> b.id }
         if max_record.nil?
           1
         elsif max_record.id.is_a?(Numeric)
           max_record.id.succ
         end
       end
+
+      def all_in_process
+        all
+      end
+      private :all_in_process
 
       def record_index
         @record_index ||= {}
@@ -193,10 +163,12 @@ module ActiveHash
       end
 
       def all(options = {})
-        ActiveHash::Relation.new(self, @records || [], options[:conditions] || {})
+        relation = ActiveHash::Relation.new(self, @records || [])
+        relation = relation.where!(options[:conditions]) if options[:conditions]
+        relation
       end
 
-      delegate :where, :find, :find_by, :find_by!, :find_by_id, :count, :pluck, :pick, :first, :last, :order, to: :all
+      delegate :where, :find, :find_by, :find_by!, :find_by_id, :count, :pluck, :ids, :pick, :first, :last, :order, to: :all
 
       def transaction
         yield
@@ -225,7 +197,7 @@ module ActiveHash
         validate_field(field_name)
         field_names << field_name
 
-        add_default_value(field_name, options[:default]) if options[:default]
+        add_default_value(field_name, options[:default]) if options.key?(:default)
         define_getter_method(field_name, options[:default])
         define_setter_method(field_name)
         define_interrogator_method(field_name)
@@ -400,6 +372,9 @@ module ActiveHash
       def scope(name, body)
         raise ArgumentError, 'body needs to be callable' unless body.respond_to?(:call)
 
+        self.scopes ||= {}
+        self.scopes[name] = body
+
         the_meta_class.instance_eval do
           define_method(name) do |*args|
             instance_exec(*args, &body)
@@ -480,7 +455,11 @@ module ActiveHash
         when new_record?
           "#{self.class.cache_key}/new"
         when timestamp = self[:updated_at]
-          "#{self.class.cache_key}/#{id}-#{timestamp.to_s(:number)}"
+          if ActiveSupport::VERSION::MAJOR < 7
+            "#{self.class.cache_key}/#{id}-#{timestamp.to_s(:number)}"
+          else
+            "#{self.class.cache_key}/#{id}-#{timestamp.to_fs(:number)}"
+          end
         else
           "#{self.class.cache_key}/#{id}"
       end

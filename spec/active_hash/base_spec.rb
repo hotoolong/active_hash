@@ -205,6 +205,29 @@ describe ActiveHash, "Base" do
     end
   end
 
+  describe ".reload" do
+    before do
+      Country.field :name
+      Country.field :language
+      Country.data = [
+        {:id => 1, :name => "US", :language => 'English'},
+        {:id => 2, :name => "Canada", :language => 'English'},
+        {:id => 3, :name => "Mexico", :language => 'Spanish'}
+      ]
+    end
+
+    it "it reloads cached records" do
+      countries = Country.where(language: 'Spanish')
+      expect(countries.count).to eq(1)
+
+      Country.create(id: 4, name: 'Spain', language: 'Spanish')
+
+      expect(countries.count).to eq(1)
+      countries.reload
+      expect(countries.count).to eq(2)
+    end
+  end
+
   describe ".where" do
     before do
       Country.field :name
@@ -221,7 +244,7 @@ describe ActiveHash, "Base" do
     end
 
     it "returns WhereChain class if no conditions are provided" do
-      expect(Country.where.class).to eq(ActiveHash::Base::WhereChain)
+      expect(Country.where.class).to eq(ActiveHash::Relation::WhereChain)
     end
 
     it "returns all records when passed nil" do
@@ -318,6 +341,22 @@ describe ActiveHash, "Base" do
     end
   end
 
+  describe ".invert_where" do
+    before do
+      Country.field :name
+      Country.field :language
+      Country.data = [
+        {:id => 1, :name => "US", :language => 'English'},
+        {:id => 2, :name => "Canada", :language => 'English'},
+        {:id => 3, :name => "Mexico", :language => 'Spanish'}
+      ]
+    end
+
+    it "inverts all conditions" do
+      expect(Country.where(id: 1).where.not(id: 3).invert_where.map(&:name)).to match_array(%w(Mexico))
+    end
+  end
+
   describe ".where.not" do
     before do
       Country.field :name
@@ -385,6 +424,10 @@ describe ActiveHash, "Base" do
       expect(record.first.name).to eq('Canada')
       expect(record.last.id).to eq(3)
       expect(record.last.name).to eq('Mexico')
+    end
+
+    it "returns a chainable relation even if id is given" do
+      expect(Country.where.not(id: 1).class).to eq(ActiveHash::Relation)
     end
 
     it "returns all records when id is nil" do
@@ -523,17 +566,35 @@ describe ActiveHash, "Base" do
   describe ".pluck" do
     before do
       Country.data = [
+        {:id => 1, :name => "US", :language => "English"},
+        {:id => 2, :name => "Canada", :language => "English"},
+        {:id => 3, :name => "Mexico", :language => "Spanish"}
+      ]
+    end
+
+    it "returns an two dimensional Array of 3 attributes values" do
+      expect(Country.pluck(:id, :name, :language)).to match_array([[1, "US", "English"], [2, "Canada", "English"], [3, "Mexico", "Spanish"]])
+    end
+
+    it "returns an two dimensional Array of 2 attributes values" do
+      expect(Country.pluck(:id, :name)).to match_array([[1, "US"], [2, "Canada"], [3, "Mexico"]])
+    end
+
+    it "returns an Array of attribute values" do
+      expect(Country.pluck(:id)).to match_array([1, 2, 3])
+    end
+  end
+
+  describe '.ids' do
+    before do
+      Country.data = [
         {:id => 1, :name => "US"},
         {:id => 2, :name => "Canada"}
       ]
     end
 
-    it "returns an two dimensional Array of attributes values" do
-      expect(Country.pluck(:id, :name)).to match_array([[1,"US"], [2, "Canada"]])
-    end
-
-    it "returns an Array of attribute values" do
-      expect(Country.pluck(:id)).to match_array([1,2])
+    it "returns an Array of id attributes" do
+      expect(Country.ids).to match_array([1,2])
     end
   end
 
@@ -598,8 +659,8 @@ describe ActiveHash, "Base" do
       end
 
       it "raises ActiveHash::RecordNotFound when id not found" do
-        expect { 
-          Country.find(0) 
+        expect {
+          Country.find(0)
         }.to raise_error(an_instance_of(ActiveHash::RecordNotFound)
           .and having_attributes(
             message: "Couldn't find Country with ID=0",
@@ -695,11 +756,11 @@ describe ActiveHash, "Base" do
       end
 
       it "finds the record with a chained filter" do
-        Country.where(name: "Canada").find_by_id("2").id.should == 2
+        expect(Country.where(name: "Canada").find_by_id("2").id).to eq(2)
       end
 
       it "filters ecord with a chained filter" do
-        Country.where(name: "Canada").find_by_id("1").should be_nil
+        expect(Country.where(name: "Canada").find_by_id("1")).to be_nil
       end
     end
 
@@ -971,9 +1032,132 @@ describe ActiveHash, "Base" do
 
     it "populates the data correctly in the order provided" do
       countries = Country.where(language: 'English').order(id: :desc)
+
       expect(countries.count).to eq 2
       expect(countries.first).to eq Country.find_by(name: "Canada")
       expect(countries.second).to eq Country.find_by(name: "US")
+    end
+
+    it "can be chained" do
+      countries = Country.order(language: :asc)
+      expect(countries.first).to eq Country.find_by(name: "US")
+
+      countries = countries.order(name: :asc)
+      expect(countries.first).to eq Country.find_by(name: "Canada")
+    end
+
+    it "doesn't change the order of original records" do
+      countries = Country.order(id: :desc)
+
+      expect(countries.first).to eq Country.find_by(name: "Mexico")
+      expect(countries.second).to eq Country.find_by(name: "Canada")
+      expect(countries.third).to eq Country.find_by(name: "US")
+
+      expect(countries.find(1)).to eq Country.find_by(name: "US")
+
+      expect(Country.all.first).to eq Country.find_by(name: "US")
+      expect(Country.all.second).to eq Country.find_by(name: "Canada")
+      expect(Country.all.third).to eq Country.find_by(name: "Mexico")
+    end
+  end
+
+  describe ".reorder" do
+    it "re-orders records" do
+      countries = Country.order(language: :asc)
+      expect(countries.first).to eq Country.find_by(name: "US")
+
+      countries = countries.reorder(id: :desc)
+      expect(countries.first).to eq Country.find_by(name: "Mexico")
+    end
+  end
+
+  describe ".exists?" do
+    before do
+      Country.field :name
+      Country.field :language
+      Country.field :code
+      Country.data = [
+        { id: 1, name: "US",     language: "English", code: 1 },
+        { id: 2, name: "Canada", language: "English", code: 1 },
+        { id: 3, name: "Mexico", language: "Spanish", code: 52 }
+      ]
+    end
+
+    context "when data are exists and no arguments is passed" do
+      it "return true" do
+        expect(Country.exists?).to be_truthy
+      end
+    end
+
+    context "when no data are exists and no arguments is passed" do
+      before do
+        Country.field :name
+        Country.field :language
+        Country.field :code
+        Country.data = []
+      end
+
+      it "return false" do
+        expect(Country.exists?).to be_falsy
+      end
+    end
+
+    context "when false is passed" do
+      it "return false" do
+        expect(Country.exists?(false)).to be_falsy
+      end
+    end
+
+    describe "with matches" do
+      context 'for a record argument' do
+        it "return true" do
+          expect(Country.exists?(Country.new({ id: 1, name: "US", language: "English", code: 1 }))).to be_truthy
+        end
+      end
+
+      context "for an integer argument" do
+        it "return true" do
+          expect(Country.exists?(1)).to be_truthy
+        end
+      end
+
+      context "for a string argument" do
+        it "return true" do
+          expect(Country.exists?("1")).to be_truthy
+        end
+      end
+
+      context "for a hash argument" do
+        it "return true" do
+          expect(Country.exists?(name: "US", language: "English")).to be_truthy
+        end
+      end
+    end
+
+    describe "without matches" do
+      context 'for a record argument' do
+        it "return false" do
+          expect(Country.exists?(Country.new({ id: 4, name: "Franch", language: "French", code: 16 }))).to be_falsy
+        end
+      end
+
+      context "for an integer argument" do
+        it "return false" do
+          expect(Country.exists?(4)).to be_falsy
+        end
+      end
+
+      context "for a string argument" do
+        it "return false" do
+          expect(Country.exists?("4")).to be_falsy
+        end
+      end
+
+      context "for a hash argument" do
+        it "return false" do
+          expect(Country.exists?(name: "US", language: "Spanish")).to be_falsy
+        end
+      end
     end
   end
 
@@ -1060,6 +1244,17 @@ describe ActiveHash, "Base" do
         it "returns the default value when not present" do
           country = Country.new
           expect(country.attributes[:name]).to eq("foobar")
+        end
+
+        context "when the default value is false" do
+          before do
+            Country.field :active, :default => false
+          end
+    
+          it "returns the default value when not present" do
+            country = Country.new
+            expect(country.attributes[:active]).to eq(false)
+          end
         end
       end
     end
@@ -1258,6 +1453,9 @@ describe ActiveHash, "Base" do
           t.integer :subject_id
           t.integer :country_id
         end
+
+        extend ActiveHash::Associations::ActiveRecordExtensions
+
         belongs_to :subject, :polymorphic => true
         belongs_to :country
       end
@@ -1297,7 +1495,11 @@ describe ActiveHash, "Base" do
         {:id => 1, :name => "foo", :updated_at => timestamp}
       ]
 
-      expect(Country.first.cache_key).to eq("countries/1-#{timestamp.to_s(:number)}")
+      if ActiveSupport::VERSION::MAJOR < 7
+        expect(Country.first.cache_key).to eq("countries/1-#{timestamp.to_s(:number)}")
+      else
+        expect(Country.first.cache_key).to eq("countries/1-#{timestamp.to_fs(:number)}")
+      end
     end
 
     it 'should use "new" instead of the id for a new record' do
@@ -1483,11 +1685,14 @@ describe ActiveHash, "Base" do
         Country.field :name
         Country.field :language
         Country.data = [
-          {:id => 1, :name => "US", :language => 'English'},
-          {:id => 2, :name => "Canada", :language => 'English'},
-          {:id => 3, :name => "Mexico", :language => 'Spanish'}
+          {:id => 1, :name => "US", continent: 'North America', :language => 'English'},
+          {:id => 2, :name => "Canada" , continent: 'North America', :language => 'English'},
+          {:id => 3, :name => "Mexico" , continent: 'North America', :language => 'Spanish'},
+          {:id => 4, :name => "Brazil" , continent: 'South America', :language => 'Portuguese'}
         ]
         Country.scope :english_language, -> { where(language: 'English') }
+        Country.scope :portuguese_language, -> { where(language: 'Portuguese') }
+        Country.scope :south_america, -> { where(continent: 'South America') }
       end
 
       it 'should define a scope method' do
@@ -1503,6 +1708,12 @@ describe ActiveHash, "Base" do
         expect(Country.english_language.first.id).to eq 1
         expect(Country.english_language.second.id).to eq 2
       end
+
+      it 'should be chainable' do
+        expect(Country.south_america.portuguese_language).to(
+          eq(Country.where(continent: 'South America').where(language: 'Portuguese'))
+        )
+      end
     end
 
     context 'for query with argument' do
@@ -1510,10 +1721,12 @@ describe ActiveHash, "Base" do
         Country.field :name
         Country.field :language
         Country.data = [
-          {:id => 1, :name => "US", :language => 'English'},
-          {:id => 2, :name => "Canada", :language => 'English'},
-          {:id => 3, :name => "Mexico", :language => 'Spanish'}
+          {:id => 1, :name => "US", continent: 'North America', :language => 'English'},
+          {:id => 2, :name => "Canada", continent: 'North America', :language => 'English'},
+          {:id => 3, :name => "Mexico", continent: 'North America', :language => 'Spanish'},
+          {:id => 4, :name => "Brazil" , continent: 'South America', :language => 'Portuguese'}
         ]
+        Country.scope :with_continent, ->(continent) { where(continent: continent) }
         Country.scope :with_language, ->(language) { where(language: language) }
       end
 
@@ -1529,6 +1742,12 @@ describe ActiveHash, "Base" do
         expect(Country.with_language('English').count).to eq 2
         expect(Country.with_language('English').first.id).to eq 1
         expect(Country.with_language('English').second.id).to eq 2
+      end
+
+      it 'should be chainable' do
+        expect(Country.with_continent('South America').with_language('Portuguese')).to(
+          eq(Country.where(continent: 'South America').where(language: 'Portuguese'))
+        )
       end
     end
 

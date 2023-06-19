@@ -1,6 +1,6 @@
 # ActiveHash
 
-[![Build Status](https://travis-ci.org/zilkey/active_hash.png?branch=master)](https://travis-ci.org/zilkey/active_hash)
+[![Build Status](https://github.com/active-hash/active_hash/actions/workflows/ruby.yml/badge.svg)](https://github.com/active-hash/active_hash/actions/workflows/ruby.yml)
 
 ActiveHash is a simple base class that allows you to use a ruby hash as a readonly datasource for an ActiveRecord-like model.
 
@@ -14,10 +14,10 @@ ActiveHash also ships with:
 
   * ActiveFile: a base class that you can use to create file data sources
   * ActiveYaml: a base class that will turn YAML into a hash and load the data into an ActiveHash object
-F
+
 ## !!! Important notice !!!
 We have changed returned value to chainable by v3.0.0. It's not just an `Array` instance anymore.
-If it breaks your application, please report us on [issues](https://github.com/zilkey/active_hash/issues), and use v2.x.x as following..
+If it breaks your application, please report us on [issues](https://github.com/active-hash/active_hash/issues), and use v2.x.x as following..
 
 ```ruby
 gem 'active_hash', '~> 2.3.0'
@@ -169,6 +169,7 @@ Country.find_by_id 1           # => find the first object that matches the id
 Country.find_by(name: 'US')    # => returns the first country object with specified argument
 Country.find_by!(name: 'US')   # => same as find_by, but raise exception when not found
 Country.where(name: 'US')      # => returns all records with name: 'US'
+Country.where(name: /U/)       # => returns all records where the name matches the regex /U/
 Country.where.not(name: 'US')  # => returns all records without name: 'US'
 Country.order(name: :desc)     # => returns all records ordered by name attribute in DESC order
 ```
@@ -211,11 +212,11 @@ Country#name=       # => sets the name
 The ActiveHash::Base.all method functions like an in-memory data store. You can save your records as ActiveHash::Relation object by using standard ActiveRecord create and save methods:
 ```ruby
 Country.all
-=> #<ActiveHash::Relation:0x00007f861e043bb0 @klass=Country, @all_records=[], @query_hash={}, @records_dirty=false>
+=> #<ActiveHash::Relation:0x00007f861e043bb0 @klass=Country, @all_records=[], @conditions=[..], @records_dirty=false>
 Country.create
 => #<Country:0x00007f861b7abce8 @attributes={:id=>1}>
 Country.all
-=> #<ActiveHash::Relation:0x00007f861b7b3628 @klass=Country, @all_records=[#<Country:0x00007f861b7abce8 @attributes={:id=>1}>], @query_hash={}, @records_dirty=false>
+=> #<ActiveHash::Relation:0x00007f861b7b3628 @klass=Country, @all_records=[#<Country:0x00007f861b7abce8 @attributes={:id=>1}>], @conditions=[..], @records_dirty=false>
 country = Country.new
 => #<Country:0x00007f861e059938 @attributes={}>
 country.new_record?
@@ -225,7 +226,7 @@ country.save
 country.new_record?
 # => false
 Country.all
-=> #<ActiveHash::Relation:0x00007f861e0ca610 @klass=Country, @all_records=[#<Country:0x00007f861b7abce8 @attributes={:id=>1}>, #<Country:0x00007f861e059938 @attributes={:id=>2}>], @query_hash={}, @records_dirty=false>
+=> #<ActiveHash::Relation:0x00007f861e0ca610 @klass=Country, @all_records=[#<Country:0x00007f861b7abce8 @attributes={:id=>1}>, #<Country:0x00007f861e059938 @attributes={:id=>2}>], @conditions=[..], @records_dirty=false>
 ```
 Notice that when adding records to the collection, it will auto-increment the id for you by default.  If you use string ids, it will not auto-increment the id.  Available methods are:
 ```
@@ -369,6 +370,35 @@ mexico:
   id: 3
   name: Mexico
 ```
+
+### Automatic Key Attribute
+
+When using the hash format for your YAML file, ActiveYaml will automatically add a `key` attribute with the name of the object.  You can overwrite this by setting the key attribute in the YAML file.
+For example:
+```
+au:
+  id: 1
+  name: Australia
+```
+
+When you access the object you can do `Country.find(1).key => 'au'`. Or `Country.find_by_key('au')`
+
+If you want a different key on only some objects you can mix and match:
+
+```
+au:
+  id: 1
+  key: aus
+  name: Australia
+nz:
+  id: 2
+  name: New Zealand
+```
+
+`Country.find(1).key => 'aus'`
+
+`Country.find(2).key => 'nz'`
+
 ### Multiple files per model
 
 You can use multiple files to store your data. You will have to choose between hash or array style as you cannot use both for one model.
@@ -427,6 +457,12 @@ Embedded ruby can be used in ActiveYaml using erb brackets `<% %>` and `<%= %>` 
 - id: 1
   email: <%= "user#{rand(100)}@email.com" %>
   password: <%= ENV['USER_PASSWORD'] %>
+```
+
+This can be disabled in an initializer:
+```ruby
+# config/initializers/active_yaml.rb
+ActiveYaml::Base.process_erb = false
 ```
 
 ## ActiveJSON
@@ -587,10 +623,6 @@ To make users' lives easier, please maintain support for:
 
   * Ruby 2.4
   * ActiveRecord/ActiveSupport from 5.0 through edge
-
-To that end, run specs against all rubies before committing:
-
-    wwtd
 
 Once appraisal passes in all supported rubies, follow these steps to release a new version of active_hash:
 

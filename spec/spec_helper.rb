@@ -1,7 +1,6 @@
 require "bundler/setup"
 require "pry"
 require 'rspec'
-require 'rspec/autorun'
 require 'yaml'
 
 SKIP_ACTIVE_RECORD = ENV['SKIP_ACTIVE_RECORD']
@@ -14,3 +13,13 @@ require 'active_record' unless SKIP_ACTIVE_RECORD
 Dir["spec/support/**/*.rb"].each { |f|
   require File.expand_path(f)
 }
+
+if !SKIP_ACTIVE_RECORD && ActiveRecord::VERSION::MAJOR < 7
+  RSpec.configure do |config|
+    config.after(:each) do
+      # To isolate tests with temporary classes.
+      # ref: https://groups.google.com/g/rspec/c/7CQq0ABS3yQ
+      ActiveSupport::Dependencies::Reference.clear!
+    end
+  end
+end
