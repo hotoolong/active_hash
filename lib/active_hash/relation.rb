@@ -22,6 +22,10 @@ module ActiveHash
       spawn.where!(conditions_hash)
     end
 
+    def pretty_print(pp)
+      pp.pp(entries.to_ary)
+    end
+
     class WhereChain
       attr_reader :relation
 
@@ -164,13 +168,13 @@ module ActiveHash
     end
 
     def method_missing(method_name, *args)
-      return super unless klass.scopes.key?(method_name)
+      return super unless klass.scopes&.key?(method_name)
 
       instance_exec(*args, &klass.scopes[method_name])
     end
 
     def respond_to_missing?(method_name, include_private = false)
-      klass.scopes.key?(method_name) || super
+      klass.scopes&.key?(method_name) || super
     end
 
     private
