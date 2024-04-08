@@ -127,6 +127,10 @@ module ActiveHash
         @record_index ||= {}
       end
 
+      def has_query_constraints?
+        false
+      end
+
       private :record_index
 
       def reset_record_index
@@ -411,7 +415,7 @@ module ActiveHash
     end
 
     def _read_attribute(key)
-      attributes[key]
+      attributes[key.to_sym]
     end
     alias_method :read_attribute, :_read_attribute
 

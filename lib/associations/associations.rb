@@ -2,16 +2,40 @@ module ActiveHash
   module Associations
 
     module ActiveRecordExtensions
-
       def self.extended(base)
         require_relative 'reflection_extensions'
+      end
+
+      def has_many(association_id, **options)
+        if options[:through]
+          klass_name = association_id.to_s.classify
+          klass =
+            begin
+              klass_name.safe_constantize
+            rescue StandardError, LoadError
+              nil
+            end
+
+          if klass && klass < ActiveHash::Base
+            define_method(association_id) do
+              join_models = send(options[:through])
+              join_models.flat_map do |join_model|
+                join_model.send(association_id.to_s.singularize)
+              end.uniq
+            end
+
+            return
+          end
+        end
+
+        super
       end
 
       def belongs_to(name, scope = nil, **options)
         klass_name = options.key?(:class_name) ? options[:class_name] : name.to_s.camelize
         klass =
           begin
-            klass_name.constantize
+            klass_name.safe_constantize
           rescue StandardError, LoadError
             nil
           end
@@ -31,11 +55,11 @@ module ActiveHash
           :shortcuts => []
         }.merge(options)
         # Define default primary_key with provided class_name if any
-        options[:primary_key] ||= options[:class_name].constantize.primary_key
+        options[:primary_key] ||= options[:class_name].safe_constantize.primary_key
         options[:shortcuts] = [options[:shortcuts]] unless options[:shortcuts].kind_of?(Array)
 
         define_method(association_id) do
-          options[:class_name].constantize.send("find_by_#{options[:primary_key]}", send(options[:foreign_key]))
+          options[:class_name].safe_constantize.send("find_by_#{options[:primary_key]}", send(options[:foreign_key]))
         end
 
         define_method("#{association_id}=") do |new_value|
@@ -48,16 +72,13 @@ module ActiveHash
           end
 
           define_method("#{association_id}_#{shortcut}=") do |new_value|
-            send "#{association_id}=", new_value ? options[:class_name].constantize.send("find_by_#{shortcut}", new_value) : nil
+            send "#{association_id}=", new_value ? options[:class_name].safe_constantize.send("find_by_#{shortcut}", new_value) : nil
           end
         end
 
         if ActiveRecord::Reflection.respond_to?(:create)
           if defined?(ActiveHash::Reflection::BelongsToReflection)
             reflection = ActiveHash::Reflection::BelongsToReflection.new(association_id.to_sym, nil, options, self)
-            if options[:through]
-              reflection = ActiveRecord::ThroughReflection.new(reflection)
-            end
           else
             reflection = ActiveRecord::Reflection.create(
               :belongs_to,
@@ -88,7 +109,7 @@ module ActiveHash
               :belongs_to,
               association_id.to_sym,
               options,
-              options[:class_name].constantize
+              options[:class_name].safe_constantize
             )
           end
         end
@@ -108,7 +129,7 @@ module ActiveHash
             :primary_key => self.class.primary_key
           }.merge(options)
 
-          klass = options[:class_name].constantize
+          klass = options[:class_name].safe_constantize
           primary_key_value = send(options[:primary_key])
           foreign_key = options[:foreign_key].to_sym
 
@@ -120,6 +141,7 @@ module ActiveHash
             klass.where(foreign_key => primary_key_value)
           end
         end
+
         define_method("#{association_id.to_s.underscore.singularize}_ids") do
           public_send(association_id).map(&:id)
         end
@@ -133,7 +155,7 @@ module ActiveHash
             :primary_key => self.class.primary_key
           }.merge(options)
 
-          scope = options[:class_name].constantize
+          scope = options[:class_name].safe_constantize
 
           if scope.respond_to?(:scoped) && options[:conditions]
             scope = scope.scoped(:conditions => options[:conditions])
@@ -143,7 +165,6 @@ module ActiveHash
       end
 
       def belongs_to(association_id, options = {})
-
         options = {
           :class_name => association_id.to_s.classify,
           :foreign_key => association_id.to_s.foreign_key,
@@ -153,13 +174,12 @@ module ActiveHash
         field options[:foreign_key].to_sym
 
         define_method(association_id) do
-          options[:class_name].constantize.send("find_by_#{options[:primary_key]}", send(options[:foreign_key]))
+          options[:class_name].safe_constantize.send("find_by_#{options[:primary_key]}", send(options[:foreign_key]))
         end
 
         define_method("#{association_id}=") do |new_value|
           attributes[options[:foreign_key].to_sym] = new_value ? new_value.send(options[:primary_key]) : nil
         end
-
       end
     end
 

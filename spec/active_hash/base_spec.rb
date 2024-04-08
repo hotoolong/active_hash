@@ -284,6 +284,13 @@ describe ActiveHash, "Base" do
       expect(record.first.name).to eq('US')
     end
 
+    it "filters records when passed a hash with string keys" do
+      record = Country.where('name' => 'US')
+      expect(record.count).to eq(1)
+      expect(record.first.id).to eq(1)
+      expect(record.first.name).to eq('US')
+    end
+
     it "raises an error if ids aren't unique" do
       expect do
         Country.data = [
@@ -458,7 +465,8 @@ describe ActiveHash, "Base" do
       Country.data = [
         {:id => 1, :name => "US", :language => 'English'},
         {:id => 2, :name => "Canada", :language => 'English'},
-        {:id => 3, :name => "Mexico", :language => 'Spanish'}
+        {:id => 3, :name => "Mexico", :language => 'Spanish'},
+        {:id => 5, :name => "Any", :language => nil}
       ]
     end
 
@@ -516,6 +524,14 @@ describe ActiveHash, "Base" do
 
     it "returns nil when passed a wrong id" do
       expect(Country.find_by(:id => 4)).to be_nil
+    end
+
+    it "finds record by nil value" do
+      expect(Country.find_by(:language => nil).id).to eq(5)
+    end
+
+    it "doesn't finds nil records when searching for ''" do
+      expect(Country.find_by(:language => '')).to be_nil
     end
   end
 
@@ -582,6 +598,30 @@ describe ActiveHash, "Base" do
 
     it "returns an Array of attribute values" do
       expect(Country.pluck(:id)).to match_array([1, 2, 3])
+    end
+
+    context 'with the same field name and method name' do
+      before do
+        class CountryWithContinent < ActiveHash::Base
+          self.data = [
+            {:id => 1, :name => "US", continent: 1},
+            {:id => 2, :name => "Canada", continent: 1},
+            {:id => 3, :name => "Mexico", continent: 1},
+            {:id => 4, :name => "Brazil", continent: 2}
+          ]
+
+          # behave like ActiveRecord Enum
+          CONTINENTS = { north_america: 1, south_america: 2, europe: 3, asia: 4, africa: 5, oceania: 6 }
+
+          def continent
+            CONTINENTS.key(self[:continent]).to_sym
+          end
+        end
+      end
+
+      it "returns the value of the method when the field name is the same as the method name" do
+        expect(CountryWithContinent.pluck(:id, :name, :continent)).to match_array([[1, "US", :north_america], [2, "Canada", :north_america], [3, "Mexico", :north_america], [4, "Brazil", :south_america]])
+      end
     end
   end
 
@@ -912,7 +952,7 @@ describe ActiveHash, "Base" do
         it "raises a NoMethodError" do
           expect {
             Country.find_by_name_and_shoe_size("US", 10)
-          }.to raise_error(NoMethodError, /undefined method `find_by_name_and_shoe_size' (?:for|on) Country/)
+          }.to raise_error(NoMethodError, /undefined method `find_by_name_and_shoe_size' (?:for|on) (class )?Country/)
         end
       end
     end
@@ -941,7 +981,7 @@ describe ActiveHash, "Base" do
         it "raises a NoMethodError" do
           expect {
             Country.find_by_name_and_shoe_size!("US", 10)
-          }.to raise_error(NoMethodError, /undefined method `find_by_name_and_shoe_size!' (?:for|on) Country/)
+          }.to raise_error(NoMethodError, /undefined method `find_by_name_and_shoe_size!' (?:for|on) (class )?Country/)
         end
       end
     end
@@ -1165,7 +1205,7 @@ describe ActiveHash, "Base" do
     it "doesn't blow up if you call a missing dynamic finder when fields haven't been set" do
       expect do
         Country.find_by_name("Foo")
-      end.to raise_error(NoMethodError, /undefined method `find_by_name' (?:for|on) Country/)
+      end.to raise_error(NoMethodError, /undefined method `find_by_name' (?:for|on) (class )?Country/)
     end
   end
 
@@ -1194,10 +1234,22 @@ describe ActiveHash, "Base" do
       expect(country._read_attribute(:foo)).to eq(:bar)
     end
 
+    it "works when string key passed to _read_attribute" do
+      Country.field :foo
+      country = Country.new(:foo => :bar)
+      expect(country._read_attribute('foo')).to eq(:bar)
+    end
+
     it "works with read_attribute" do
       Country.field :foo
       country = Country.new(:foo => :bar)
       expect(country.read_attribute(:foo)).to eq(:bar)
+    end
+
+    it "works when string key passed to read_attribute" do
+      Country.field :foo
+      country = Country.new(:foo => :bar)
+      expect(country.read_attribute('foo')).to eq(:bar)
     end
 
     it "works with #[]=" do
@@ -1250,7 +1302,7 @@ describe ActiveHash, "Base" do
           before do
             Country.field :active, :default => false
           end
-    
+
           it "returns the default value when not present" do
             country = Country.new
             expect(country.attributes[:active]).to eq(false)
