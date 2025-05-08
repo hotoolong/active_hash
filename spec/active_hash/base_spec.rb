@@ -106,6 +106,27 @@ describe ActiveHash, "Base" do
     end
   end
 
+  describe ".field_names" do
+    before do
+      Country.fields :name, :iso_name, "size"
+    end
+
+    it "returns an array of field names" do
+      expect(Country.field_names).to eq([:name, :iso_name, :size])
+    end
+  end
+
+  describe ".column_names" do
+    before do
+      Country.fields :name, :iso_name, "size"
+    end
+
+    it "returns an array of column names" do
+      skip "Not supported in Ruby 3.0.0" if RUBY_VERSION < "3.0.0"
+      expect(Country.column_names).to eq(["name", "iso_name", "size"])
+    end
+  end
+
   describe ".data=" do
     before do
       class Region < ActiveHash::Base
@@ -952,7 +973,7 @@ describe ActiveHash, "Base" do
         it "raises a NoMethodError" do
           expect {
             Country.find_by_name_and_shoe_size("US", 10)
-          }.to raise_error(NoMethodError, /undefined method `find_by_name_and_shoe_size' (?:for|on) (class )?Country/)
+          }.to raise_error(NoMethodError, /undefined method [`']find_by_name_and_shoe_size' (?:for|on) (class )?Country/)
         end
       end
     end
@@ -981,7 +1002,7 @@ describe ActiveHash, "Base" do
         it "raises a NoMethodError" do
           expect {
             Country.find_by_name_and_shoe_size!("US", 10)
-          }.to raise_error(NoMethodError, /undefined method `find_by_name_and_shoe_size!' (?:for|on) (class )?Country/)
+          }.to raise_error(NoMethodError, /undefined method [`']find_by_name_and_shoe_size!' (?:for|on) (class )?Country/)
         end
       end
     end
@@ -1148,6 +1169,12 @@ describe ActiveHash, "Base" do
       end
     end
 
+    context "when nil is passed" do
+      it "return nil" do
+        expect(Country.exists?(nil)).to be_falsy
+      end
+    end
+
     describe "with matches" do
       context 'for a record argument' do
         it "return true" do
@@ -1205,7 +1232,7 @@ describe ActiveHash, "Base" do
     it "doesn't blow up if you call a missing dynamic finder when fields haven't been set" do
       expect do
         Country.find_by_name("Foo")
-      end.to raise_error(NoMethodError, /undefined method `find_by_name' (?:for|on) (class )?Country/)
+      end.to raise_error(NoMethodError, /undefined method [`']find_by_name' (?:for|on) (class )?Country/)
     end
   end
 
@@ -1820,4 +1847,28 @@ describe ActiveHash, "Base" do
     end
   end
 
+  describe 'ActiveModel::Translation' do
+    around(:example) do |example|
+      if Object.const_defined?(:ActiveModel)
+        example.run
+      else
+        skip
+      end
+    end
+
+    context 'if the locale is set to :ja' do
+      around(:example) do |example|
+        current_locale = I18n.locale
+        I18n.locale = :ja
+
+        example.run
+
+        I18n.locale = current_locale
+      end
+
+      subject { Country.model_name.human }
+
+      it { is_expected.to eq('国') }
+    end
+  end
 end

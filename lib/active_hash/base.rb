@@ -24,7 +24,7 @@ module ActiveHash
     class_attribute :_data, :dirty, :default_attributes, :scopes
 
     if Object.const_defined?(:ActiveModel)
-      extend ActiveModel::Naming
+      extend ActiveModel::Translation
       include ActiveModel::Conversion
     else
       def to_param
@@ -48,6 +48,23 @@ module ActiveHash
 
       def field_names
         @field_names ||= []
+      end
+
+      #
+      # Useful for CSV integration needing column names as strings.
+      #
+      # @return [Array<String>] An array of column names as strings.
+      #
+      # @example Usage
+      #  class Country < ActiveHash::Base
+      #    fields :name, :code
+      #  end
+      #
+      #  Country.column_names
+      #  # => ["id", "name", "code"]
+      #
+      def column_names
+        field_names.map(&:name)
       end
 
       def the_meta_class
@@ -85,12 +102,12 @@ module ActiveHash
         end
       end
 
-      def exists?(args = nil)
+      def exists?(args = :none)
         if args.respond_to?(:id)
           record_index[args.id.to_s].present?
-        elsif args == false
+        elsif !args
           false
-        elsif args.nil?
+        elsif args == :none
           all.present?
         elsif args.is_a?(Hash)
           all.where(args).present?
@@ -198,7 +215,9 @@ module ActiveHash
       end
 
       def field(field_name, options = {})
+        field_name = field_name.to_sym
         validate_field(field_name)
+
         field_names << field_name
 
         add_default_value(field_name, options[:default]) if options.key?(:default)
@@ -210,7 +229,8 @@ module ActiveHash
       end
 
       def validate_field(field_name)
-        if [:attributes].include?(field_name.to_sym)
+        field_name = field_name.to_sym
+        if [:attributes].include?(field_name)
           raise ReservedFieldError.new("#{field_name} is a reserved field in ActiveHash.  Please use another name.")
         end
       end
@@ -264,7 +284,7 @@ module ActiveHash
       end
 
       def define_getter_method(field, default_value)
-        unless instance_methods.include?(field.to_sym)
+        unless instance_methods.include?(field)
           define_method(field) do
             attributes[field].nil? ? default_value : attributes[field]
           end

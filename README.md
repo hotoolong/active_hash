@@ -34,7 +34,11 @@ Other:
 gem install active_hash
 ```
 
-**Currently version 2.x doesn't support Ruby < 2.4 and Rails < 5**. If you use these versions, please use 1.x.
+Requirements:
+
+- v1.x: Ruby >= 1.9.3, Rails >= 2.2.2
+- v2.x, v3.x: Ruby >= 2.4, Rails >= 5
+- upcoming: Ruby >= 3.0, Rails >= 6.1
 
 ```ruby
 gem 'active_hash', '~> 1.5.3'
@@ -558,7 +562,7 @@ Call `Model.reload(true)` to force reload the data from disk.
 In Rails, you can use this snippet. Please just note it resets the state every request, which may not always be desired.
 
 ```ruby
-before_filter do
+before_action do
   [Model1, Model2, Model3].each { |m| m.reload(true) }
 end
 ```
@@ -606,6 +610,20 @@ Constants are formed by first stripping all non-word characters and then upcasin
 
 The field specified as the _enum_accessor_ must contain unique data values.
 
+## I18n
+
+ActiveHash supports i18n as ActiveModel.
+Put following code in one of your locale file (e.g. `config/locales/LANGUAGE_CODE.yml`)
+
+```yaml
+# for example, inside config/locales/ja.yml
+ja:
+  activemodel:
+    models:
+      # `Country.model_name.human` will evaluates to "国"
+      country: "国"
+```
+
 ## Contributing
 
 If you'd like to become an ActiveHash contributor, the easiest way it to fork this repo, make your changes, run the specs and submit a pull request once they pass.
@@ -619,10 +637,10 @@ If your changes seem reasonable and the specs pass I'll give you commit rights t
 
 ## Releasing a new version
 
-To make users' lives easier, please maintain support for:
+To make users' lives easier, CI will exercise tests for:
 
-  * Ruby 2.4
-  * ActiveRecord/ActiveSupport from 5.0 through edge
+  * Ruby 3.0 through current
+  * ActiveRecord/ActiveSupport from 6.1 through edge
 
 Once appraisal passes in all supported rubies, follow these steps to release a new version of active_hash:
 
