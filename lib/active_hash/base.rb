@@ -24,6 +24,7 @@ module ActiveHash
     class_attribute :_data, :dirty, :default_attributes, :scopes
 
     if Object.const_defined?(:ActiveModel)
+      extend ActiveModel::Naming
       extend ActiveModel::Translation
       include ActiveModel::Conversion
     else
@@ -102,20 +103,6 @@ module ActiveHash
         end
       end
 
-      def exists?(args = :none)
-        if args.respond_to?(:id)
-          record_index[args.id.to_s].present?
-        elsif !args
-          false
-        elsif args == :none
-          all.present?
-        elsif args.is_a?(Hash)
-          all.where(args).present?
-        else
-          all.where(id: args.to_i).present?
-        end
-      end
-
       def insert(record)
         @records ||= []
         record[:id] ||= next_id
@@ -189,7 +176,7 @@ module ActiveHash
         relation
       end
 
-      delegate :where, :find, :find_by, :find_by!, :find_by_id, :count, :pluck, :ids, :pick, :first, :last, :order, to: :all
+      delegate :exists?, :where, :find_each, :find, :find_by, :find_by!, :find_by_id, :count, :pluck, :ids, :pick, :first, :last, :order, to: :all
 
       def transaction
         yield
@@ -282,6 +269,8 @@ module ActiveHash
         self.default_attributes ||= {}
         self.default_attributes[field_name] = default_value
       end
+
+      private :add_default_value
 
       def define_getter_method(field, default_value)
         unless instance_methods.include?(field)
@@ -444,7 +433,7 @@ module ActiveHash
     end
 
     def id
-      attributes[:id] ? attributes[:id] : nil
+      attributes[:id]
     end
 
     def id=(id)

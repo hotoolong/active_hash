@@ -7,6 +7,8 @@ module ActiveHash
     delegate :empty?, :length, :first, :second, :third, :last, to: :records
     delegate :sample, to: :records
 
+    alias find_each each
+
     attr_reader :conditions, :order_values, :klass, :all_records
 
     def initialize(klass, all_records, conditions = nil, order_values = nil)
@@ -17,9 +19,25 @@ module ActiveHash
     end
 
     def where(conditions_hash = :chain)
-      return WhereChain.new(self) if conditions_hash == :chain
+      return WhereChain.new(spawn) if conditions_hash == :chain
 
       spawn.where!(conditions_hash)
+    end
+
+    def or(other)
+      unless other.is_a?(self.class)
+        raise ArgumentError, "or() expects an ActiveHash::Relation"
+      end
+
+      unless other.klass == klass
+        raise ArgumentError, "or() expects relations for the same model"
+      end
+
+      merged = (records + other.records).uniq do |record|
+        record.respond_to?(:id) ? record.id : record.object_id
+      end
+
+      self.class.new(klass, merged, [], order_values)
     end
 
     def pretty_print(pp)
@@ -62,7 +80,7 @@ module ActiveHash
     end
 
     def spawn
-      self.class.new(klass, all_records, conditions, order_values)
+      self.class.new(klass, all_records, conditions.dup, order_values)
     end
 
     def order!(*options)
@@ -132,6 +150,20 @@ module ActiveHash
 
       record = all_records[index]
       record if conditions.matches?(record)
+    end
+
+    def exists?(args = :none)
+      if args.respond_to?(:id)
+        find_by_id(args.id).present?
+      elsif !args
+        false
+      elsif args == :none
+        records.present?
+      elsif args.is_a?(Hash)
+        where(args).present?
+      else
+        where(id: args.to_s).present?
+      end
     end
 
     def count

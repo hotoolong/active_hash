@@ -124,6 +124,47 @@ unless SKIP_ACTIVE_RECORD
 
     end
 
+    # Physician(AH) <-- Appointment(AR) --> Patient(AR)
+    # polymorphic: providerable on Appointment, source_type targets ActiveHash model
+    def define_polymorphic_doctor_classes
+      define_ephemeral_class(:Physician, ActiveHash::Base) do
+        include ActiveHash::Associations
+
+        self.data = [
+          {:id => 1, :name => "ikeda"},
+          {:id => 2, :name => "sato"}
+        ]
+      end
+
+      define_ephemeral_class(:Appointment, ActiveRecord::Base) do
+        establish_connection :adapter => "sqlite3", :database => ":memory:"
+        connection.create_table :appointments, force: true do |t|
+          t.references :providerable, polymorphic: true
+          t.references :patient
+        end
+
+        extend ActiveHash::Associations::ActiveRecordExtensions
+
+        # AR belongs_to (polymorphic)
+        belongs_to :providerable, polymorphic: true
+        # AR belongs_to
+        belongs_to :patient
+      end
+
+      define_ephemeral_class(:Patient, ActiveRecord::Base) do
+        establish_connection :adapter => "sqlite3", :database => ":memory:"
+        connection.create_table :patients, force: true do |t|
+        end
+
+        extend ActiveHash::Associations::ActiveRecordExtensions
+
+        # AR has_many
+        has_many :appointments
+        # AR has_many :through (source_type points to ActiveHash model)
+        has_many :physicians, through: :appointments, source: :providerable, source_type: "Physician"
+      end
+    end
+
     before do
       @ephemeral_classes = []
     end
@@ -233,6 +274,72 @@ unless SKIP_ACTIVE_RECORD
           Appointment.create!(physician: physician2, patient: patient)
 
           expect(patient.physicians).to contain_exactly(physician1, physician2)
+        end
+
+        describe "with the :source option" do
+          before do
+            # NOTE: Removing the Patient#physicians association and adding Patient#doctors
+            Patient._reflections.delete('physicians')
+            Patient.class_eval do
+              define_method(:physicians) { raise NoMethodError, "The #physicians association is removed in this spec, use #doctors" }
+              define_method(:physicians=) { |_| raise NoMethodError, "The #physicians association is removed in this spec, use #doctors" }
+            end
+            Patient.has_many :doctors, through: :appointments, source: :physician
+          end
+
+          it "finds ActiveHash records through the join model" do
+            patient = Patient.create!
+
+            physician = Physician.last
+            Appointment.create!(physician: physician, patient: patient)
+
+            expect(patient.doctors).to contain_exactly(physician)
+          end
+        end
+
+        describe ":through when the join model uses an aliased association" do
+          before do
+            # NOTE: Removing the Appointment#physician association and adding Appointment#doctor
+            Appointment._reflections.delete('physician')
+            Appointment.class_eval do
+              define_method(:physician) { raise NoMethodError, "The #physician association is removed in this spec, use #doctor" }
+              define_method(:physician=) { |_| raise NoMethodError, "The #physician association is removed in this spec, use #doctor" }
+            end
+            Appointment.belongs_to :doctor, class_name: 'Physician', foreign_key: :physician_id
+
+            # NOTE: Removing the Patient#physicians association and adding Patient#doctors
+            Patient._reflections.delete('physicians')
+            Patient.class_eval do
+              define_method(:physicians) { raise NoMethodError, "The #physicians association is removed in this spec, use #doctors" }
+              define_method(:physicians=) { |_| raise NoMethodError, "The #physicians association is removed in this spec, use #doctors" }
+            end
+            Patient.has_many :doctors, through: :appointments
+          end
+
+          it "finds ActiveHash records through the join model" do
+            patient = Patient.create!
+
+            physician = Physician.last
+            Appointment.create!(doctor: physician, patient: patient)
+
+            expect(patient.doctors).to contain_exactly(physician)
+          end
+        end
+      end
+
+      describe ":through with a polymorphic source and source_type" do
+        before { define_polymorphic_doctor_classes }
+
+        it "does not raise when defining the association" do
+          expect(Patient.instance_method(:physicians)).to be_a(UnboundMethod)
+        end
+
+        it "returns the correct ActiveHash records" do
+          physician = Physician.find(1)
+          patient = Patient.create!
+          Appointment.create!(providerable_type: "Physician", providerable_id: physician.id, patient_id: patient.id)
+
+          expect(patient.physicians).to contain_exactly(physician)
         end
       end
 

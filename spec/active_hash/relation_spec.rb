@@ -39,6 +39,94 @@ RSpec.describe ActiveHash::Relation do
     end
   end
 
+  describe '#exists?' do
+    context "when data are exists and no arguments is passed" do
+      it "return true" do
+        expect(subject.exists?).to be_truthy
+      end
+    end
+
+    context "when no data are exists and no arguments is passed" do
+      it "return false" do
+        expect(model_class.where(name: "Mexico").exists?).to be_falsy
+      end
+    end
+
+    context "when false is passed" do
+      it "return false" do
+        expect(subject.exists?(false)).to be_falsy
+      end
+    end
+
+    context "when nil is passed" do
+      it "return nil" do
+        expect(subject.exists?(nil)).to be_falsy
+      end
+    end
+
+    describe "with matches" do
+      context 'for a record argument' do
+        it "return true" do
+          expect(subject.exists?(model_class.new({ id: 1, name: "US" }))).to be_truthy
+        end
+      end
+
+      context "for an integer argument" do
+        it "return true" do
+          expect(subject.exists?(1)).to be_truthy
+        end
+      end
+
+      context "for a string argument" do
+        it "return true" do
+          expect(subject.exists?("1")).to be_truthy
+        end
+      end
+
+      context "for a hash argument" do
+        it "return true" do
+          expect(subject.exists?(name: "US")).to be_truthy
+        end
+      end
+    end
+
+    describe "without matches" do
+      context 'for a record argument' do
+        it "return false" do
+          expect(subject.exists?(model_class.new({ id: 3, name: "Mexico" }))).to be_falsy
+        end
+      end
+
+      context "for an integer argument" do
+        it "return false" do
+          expect(subject.exists?(3)).to be_falsy
+        end
+      end
+
+      context "for a string argument" do
+        it "return false" do
+          expect(subject.exists?("3")).to be_falsy
+        end
+      end
+
+      context "for a hash argument" do
+        it "return false" do
+          expect(subject.exists?(name: "Mexico")).to be_falsy
+        end
+      end
+    end
+
+    context "when ids are strings" do
+      before do
+        model_class.all.each { |record| record.id = record.name }
+      end
+
+      it "return true" do
+        expect(model_class.all.exists?("Canada")).to be_truthy
+      end
+    end
+  end
+
   describe '#count' do
     it 'supports a block arg' do
       expect(subject.count { |s| s.name == "US" }).to eq(1)
@@ -91,6 +179,54 @@ RSpec.describe ActiveHash::Relation do
       expect(out.string).to match(/\bCanada\b/)
       expect(out.string).to match(/\bUS\b/)
       expect(out.string).to_not match(/ActiveHash::Relation/)
+    end
+  end
+
+  describe '#or' do
+    it 'returns the union of two where relations' do
+      r1 = model_class.where(name: "US")
+      r2 = model_class.where(name: "Canada")
+
+      result = r1.or(r2)
+
+      expect(result.pluck(:id)).to match_array([1, 2])
+    end
+
+    it 'deduplicates records by id' do
+      r1 = model_class.where(name: "US")
+      r2 = model_class.where(name: "US")
+
+      result = r1.or(r2)
+
+      expect(result.pluck(:id)).to eq([1])
+    end
+
+    it 'returns a relation that can be chained' do
+      r1 = model_class.where(name: "US")
+      r2 = model_class.where(name: "Canada")
+
+      result = r1.or(r2).where(id: 2)
+
+      expect(result.pluck(:id)).to eq([2])
+    end
+
+    it 'raises when OR-ing relations from different models' do
+      other_model = Class.new(ActiveHash::Base) do
+        self.data = [{ id: 1, name: "X" }]
+      end
+
+      expect {
+        model_class.where(name: "US").or(other_model.where(name: "X"))
+      }.to raise_error(ArgumentError)
+    end
+
+    it 'works with order applied after or' do
+      r1 = model_class.where(id: 1)
+      r2 = model_class.where(id: [2])
+
+      result = r1.or(r2).order(id: :desc)
+
+      expect(result.pluck(:id)).to eq([2, 1])
     end
   end
 end

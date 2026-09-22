@@ -369,6 +369,26 @@ describe ActiveHash, "Base" do
     end
   end
 
+  describe ".find_each" do
+    before do
+      Country.field :name
+      Country.field :language
+      Country.data = [
+        {:id => 1, :name => "US", :language => 'English'},
+        {:id => 2, :name => "Canada", :language => 'English'},
+        {:id => 3, :name => "Mexico", :language => 'Spanish'}
+      ]
+    end
+
+    it "iterates over data" do
+      logs = []
+      Country.where(language: 'English').find_each do |country|
+        logs << "visited #{country.name}"
+      end
+      expect(logs).to eq(["visited US", "visited Canada"])
+    end
+  end
+
   describe ".invert_where" do
     before do
       Country.field :name
@@ -477,6 +497,12 @@ describe ActiveHash, "Base" do
     it "filters records for multiple conditions" do
       expect(Country.where.not(:id => 1, :name => 'Mexico')).to match_array([Country.find(2)])
     end
+
+    it "does not mutate the parent relation" do
+      english = Country.where(language: 'English')
+      english.where.not(name: 'US')
+      expect(english.map(&:name)).to match_array(%w[US Canada])
+    end
   end
 
   describe ".find_by" do
@@ -553,6 +579,14 @@ describe ActiveHash, "Base" do
 
     it "doesn't finds nil records when searching for ''" do
       expect(Country.find_by(:language => '')).to be_nil
+    end
+
+    it "does not mutate the relation when called multiple times" do
+      countries = Country.all
+      expect(countries.find_by(id: 1).name).to eq("US")
+      expect(countries.find_by(id: 2).name).to eq("Canada")
+      expect(countries.find_by(id: 1).name).to eq("US")
+      expect(countries.length).to eq(4)
     end
   end
 
@@ -1226,6 +1260,16 @@ describe ActiveHash, "Base" do
         end
       end
     end
+
+    context "when ids are strings" do
+      before do
+        Country.all.each { |c| c.id = c.name }
+      end
+
+      it "return true" do
+        expect(Country.exists?("Canada")).to be_truthy
+      end
+    end
   end
 
   describe "#method_missing" do
@@ -1710,6 +1754,17 @@ describe ActiveHash, "Base" do
       expect(Country.new(:id => 2)).to be_new_record
     end
 
+  end
+
+  describe "#model_name" do
+    # This test reproduces the issue reported in https://github.com/active-hash/active_hash/pull/335,
+    # regarding whether ActiveHash (and its derived models) expose `#model_name`.
+    # Some serializers (e.g., okuramasafumi/alba) use the `#model_name` method internally,
+    # so this test ensures that a NoMethodError is not raised.
+    it "exposes model_name correctly" do
+      instance = Country.new(:id => 1)
+      expect { instance.model_name }.not_to raise_error
+    end
   end
 
   describe ".transaction" do
